@@ -7,19 +7,26 @@ import random
 import yt_dlp
 from dotenv import load_dotenv
 from keep_alive import keep_alive
+import logging
+
+# Configurer les logs
+logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(name)s: %(message)s')
+logger = logging.getLogger(__name__)
 
 # Charger les variables d'environnement
 load_dotenv()
-TOKEN = os.getenv('TOKEN')
+TOKEN = os.getenv('DISCORD_TOKEN')
 if not TOKEN:
-    print("Erreur : DISCORD_TOKEN non trouvé dans les variables d'environnement")
+    logger.error("DISCORD_TOKEN non trouvé dans les variables d'environnement")
     exit(1)
 
-# Intents optimisés pour réduire la charge
+# Intents ultra-minimaux pour réduire la charge
 intents = discord.Intents.default()
 intents.message_content = True
-intents.members = True
+intents.members = False  # Désactiver si non nécessaire
 intents.voice_states = True
+intents.presences = False
+intents.guilds = True
 bot = commands.Bot(command_prefix='!', intents=intents)
 
 # Supprime la commande help par défaut
@@ -34,10 +41,10 @@ def load_data():
         if os.path.exists(DATA_FILE):
             with open(DATA_FILE, 'r', encoding='utf-8') as f:
                 return json.load(f)
-        print("Nouveau fichier data.json créé")
+        logger.info("Nouveau fichier data.json créé")
         return {'xp': {}, 'levels': {}, 'custom_cmds': {}, 'banned_words': [], 'url': 'https://example.com'}
     except Exception as e:
-        print(f"Erreur lors du chargement de {DATA_FILE}: {e}")
+        logger.error(f"Erreur lors du chargement de {DATA_FILE}: {e}")
         return {'xp': {}, 'levels': {}, 'custom_cmds': {}, 'banned_words': [], 'url': 'https://example.com'}
 
 data = load_data()
@@ -46,22 +53,22 @@ def save_data():
     try:
         with open(DATA_FILE, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=4)
-        print("Données enregistrées dans data.json")
+        logger.info("Données enregistrées dans data.json")
     except Exception as e:
-        print(f"Erreur lors de l'enregistrement de {DATA_FILE}: {e}")
+        logger.error(f"Erreur lors de l'enregistrement de {DATA_FILE}: {e}")
 
 # Event: Bot ready
 @bot.event
 async def on_ready():
-    print(f'{bot.user} est connecté !')
+    logger.info(f'{bot.user} est connecté !')
     await bot.change_presence(activity=discord.Game(name="!help pour les commandes"))
-    print("Commandes enregistrées :", [cmd.name for cmd in bot.commands])
-    print("Commandes personnalisées chargées :", list(data['custom_cmds'].keys()))
+    logger.info(f"Commandes enregistrées : {[cmd.name for cmd in bot.commands]}")
+    logger.info(f"Commandes personnalisées chargées : {list(data['custom_cmds'].keys())}")
 
 # !help custom
 @bot.command(name='help')
 async def help_cmd(ctx):
-    print("Commande !help exécutée")
+    logger.info("Commande !help exécutée")
     embed = discord.Embed(title="Commandes du Bot", color=0x00ff00)
     embed.add_field(name="Générales", value="!url\n!help", inline=False)
     embed.add_field(name="Modération (Mods seulement)", value="!kick @user [raison]\n!ban @user [raison]\n!mute @user\n!unmute @user\n!clear <nombre>\n!addbanned <mot>", inline=False)
@@ -73,14 +80,14 @@ async def help_cmd(ctx):
 # !url
 @bot.command(name='url')
 async def show_url(ctx):
-    print("Commande !url exécutée")
+    logger.info("Commande !url exécutée")
     await ctx.send(f"L'URL actuelle : {data['url']}")
 
 # !changeurl (mods seulement, ajoute https:// si nécessaire)
 @bot.command(name='changeurl')
 @commands.has_permissions(manage_messages=True)
 async def change_url(ctx, *, new_url):
-    print("Commande !changeurl exécutée")
+    logger.info("Commande !changeurl exécutée")
     if not new_url.startswith(('http://', 'https://')):
         new_url = 'https://' + new_url
     data['url'] = new_url
@@ -91,7 +98,7 @@ async def change_url(ctx, *, new_url):
 @bot.command(name='kick')
 @commands.has_permissions(kick_members=True)
 async def kick(ctx, member: discord.Member, *, reason=None):
-    print("Commande !kick exécutée")
+    logger.info("Commande !kick exécutée")
     try:
         await member.kick(reason=reason)
         await ctx.send(f"{member} kické pour : {reason or 'Aucune raison'}")
@@ -101,7 +108,7 @@ async def kick(ctx, member: discord.Member, *, reason=None):
 @bot.command(name='ban')
 @commands.has_permissions(ban_members=True)
 async def ban(ctx, member: discord.Member, *, reason=None):
-    print("Commande !ban exécutée")
+    logger.info("Commande !ban exécutée")
     try:
         await member.ban(reason=reason)
         await ctx.send(f"{member} banni pour : {reason or 'Aucune raison'}")
@@ -111,7 +118,7 @@ async def ban(ctx, member: discord.Member, *, reason=None):
 @bot.command(name='mute')
 @commands.has_permissions(manage_roles=True)
 async def mute(ctx, member: discord.Member):
-    print("Commande !mute exécutée")
+    logger.info("Commande !mute exécutée")
     try:
         mute_role = discord.utils.get(ctx.guild.roles, name="Muted")
         if not mute_role:
@@ -126,7 +133,7 @@ async def mute(ctx, member: discord.Member):
 @bot.command(name='unmute')
 @commands.has_permissions(manage_roles=True)
 async def unmute(ctx, member: discord.Member):
-    print("Commande !unmute exécutée")
+    logger.info("Commande !unmute exécutée")
     try:
         mute_role = discord.utils.get(ctx.guild.roles, name="Muted")
         if mute_role:
@@ -140,7 +147,7 @@ async def unmute(ctx, member: discord.Member):
 @bot.command(name='clear')
 @commands.has_permissions(manage_messages=True)
 async def clear(ctx, amount: int = 5):
-    print("Commande !clear exécutée")
+    logger.info("Commande !clear exécutée")
     try:
         if amount > 100:
             await ctx.send("Maximum 100 messages à la fois.")
@@ -153,7 +160,7 @@ async def clear(ctx, amount: int = 5):
 @bot.command(name='addbanned')
 @commands.has_permissions(manage_messages=True)
 async def add_banned(ctx, *, word):
-    print("Commande !addbanned exécutée")
+    logger.info("Commande !addbanned exécutée")
     try:
         if word not in data['banned_words']:
             data['banned_words'].append(word.lower())
@@ -166,7 +173,7 @@ async def add_banned(ctx, *, word):
 @bot.command(name='addcmd')
 @commands.has_permissions(manage_messages=True)
 async def add_custom(ctx, name: str, *, response):
-    print(f"Commande !addcmd exécutée pour ajouter '!{name}' avec réponse : {response}")
+    logger.info(f"Commande !addcmd exécutée pour ajouter '!{name}' avec réponse : {response}")
     try:
         if name.lower() in [cmd.name for cmd in bot.commands]:
             await ctx.send(f"Erreur : Une commande nommée '!{name}' existe déjà.")
@@ -174,7 +181,7 @@ async def add_custom(ctx, name: str, *, response):
         data['custom_cmds'][name.lower()] = response
         save_data()
         await ctx.send(f"Commande !{name} ajoutée.")
-        print(f"Commandes personnalisées après ajout : {list(data['custom_cmds'].keys())}")
+        logger.info(f"Commandes personnalisées après ajout : {list(data['custom_cmds'].keys())}")
     except Exception as e:
         await ctx.send(f"Erreur lors de l'ajout de la commande : {str(e)}")
 
@@ -183,9 +190,9 @@ async def add_custom(ctx, name: str, *, response):
 async def on_command_error(ctx, error):
     if isinstance(error, commands.CommandNotFound):
         cmd_name = ctx.invoked_with.lower()
-        print(f"Commande non trouvée : {cmd_name}, vérification des commandes personnalisées...")
+        logger.info(f"Commande non trouvée : {cmd_name}, vérification des commandes personnalisées...")
         if cmd_name in data['custom_cmds']:
-            print(f"Commande personnalisée trouvée : {cmd_name}")
+            logger.info(f"Commande personnalisée trouvée : {cmd_name}")
             await ctx.send(data['custom_cmds'][cmd_name])
         else:
             await ctx.send(f"Commande '{cmd_name}' non trouvée. Tapez !help pour la liste des commandes.")
@@ -195,11 +202,12 @@ async def on_command_error(ctx, error):
         await ctx.send("Argument manquant. Vérifiez !help.")
     else:
         await ctx.send(f"Erreur inattendue : {str(error)}")
+        logger.error(f"Erreur inattendue dans on_command_error : {str(error)}")
 
 # Musique avec gestion robuste des erreurs
 @bot.command(name='play')
 async def play(ctx, url: str):
-    print(f"Commande !play exécutée avec URL : {url}")
+    logger.info(f"Commande !play exécutée avec URL : {url}")
     if not ctx.author.voice:
         await ctx.send("Rejoins un salon vocal d'abord !")
         return
@@ -211,23 +219,23 @@ async def play(ctx, url: str):
         return
 
     if ctx.guild.voice_client:
-        print("Déconnexion du salon vocal existant")
-        await ctx.guild.voice_client.disconnect()
+        logger.info("Déconnexion du salon vocal existant")
+        await ctx.guild.voice_client.disconnect(force=True)
 
     max_attempts = 3
     for attempt in range(max_attempts):
         try:
-            print(f"Tentative de connexion vocale {attempt + 1}/{max_attempts}")
-            voice_client = await channel.connect(timeout=15.0, reconnect=True)
+            logger.info(f"Tentative de connexion vocale {attempt + 1}/{max_attempts}")
+            voice_client = await channel.connect(timeout=20.0, reconnect=True)
             break
         except (asyncio.TimeoutError, Exception) as e:
-            print(f"Erreur de connexion vocale (tentative {attempt + 1}): {str(e)}")
+            logger.error(f"Erreur de connexion vocale (tentative {attempt + 1}): {str(e)}")
             if attempt == max_attempts - 1:
                 await ctx.send(f"Échec de la connexion au salon vocal après {max_attempts} tentatives : {str(e)}")
                 return
-            await asyncio.sleep(2)  # Délai avant nouvelle tentative
+            await asyncio.sleep(3)  # Délai plus long entre tentatives
 
-    # Options yt-dlp avec cookies et gestion d'erreurs
+    # Options yt-dlp avec fallback et timeout
     ydl_opts = {
         'format': 'bestaudio/best',
         'noplaylist': True,
@@ -235,40 +243,57 @@ async def play(ctx, url: str):
         'no_warnings': True,
         'default_search': 'auto',
         'source_address': '0.0.0.0',
-        'cookiefile': 'cookies.txt',  # Chemin vers cookies.txt
+        'cookiefile': 'cookies.txt' if os.path.exists('cookies.txt') else None,
         'http_headers': {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         },
+        'socket_timeout': 10,
+        'ignoreerrors': True,
+        'retry_max': 3,
         'sleep_interval': 5,
         'max_sleep_interval': 10,
     }
 
     try:
-        print("Extraction de l'URL YouTube...")
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            if 'entries' in info:
-                info = info['entries'][0]
-            audio_url = info.get('url')
-            title = info.get('title', 'Inconnu')
-            await ctx.send(f"Lecture en cours : **{title}**")
-            ffmpeg_path = "ffmpeg"  # Render a FFmpeg dans /usr/bin
-            source = discord.FFmpegPCMAudio(audio_url, executable=ffmpeg_path, options='-reconnect 1 -reconnect_streamed 1')
-            voice_client.play(source)
+        logger.info("Extraction de l'URL YouTube...")
+        async with asyncio.timeout(30):  # Timeout de 30s pour l'extraction
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+                if not info:
+                    await ctx.send("Échec de l'extraction de la vidéo. Essayez une autre URL.")
+                    await voice_client.disconnect()
+                    return
+                if 'entries' in info:
+                    info = info['entries'][0]
+                audio_url = info.get('url')
+                title = info.get('title', 'Inconnu')
+                await ctx.send(f"Lecture en cours : **{title}**")
+                ffmpeg_path = "ffmpeg"  # Render a FFmpeg dans /usr/bin
+                source = discord.FFmpegPCMAudio(
+                    audio_url,
+                    executable=ffmpeg_path,
+                    options='-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5'
+                )
+                voice_client.play(source)
+    except asyncio.TimeoutError:
+        logger.error("Timeout lors de l'extraction YouTube")
+        await ctx.send("Délai d'extraction dépassé. Essayez une autre URL ou réessayez plus tard.")
+        await voice_client.disconnect()
+        return
     except Exception as e:
-        print(f"Erreur lors de l'extraction ou lecture YouTube : {str(e)}")
+        logger.error(f"Erreur lors de l'extraction ou lecture YouTube : {str(e)}")
         await ctx.send(f"Erreur lors de la lecture de la vidéo : {str(e)}")
         await voice_client.disconnect()
         return
 
     while voice_client.is_playing():
         await asyncio.sleep(1)
-    print("Lecture terminée, déconnexion du salon vocal")
+    logger.info("Lecture terminée, déconnexion du salon vocal")
     await voice_client.disconnect()
 
 @bot.command(name='pause')
 async def pause(ctx):
-    print("Commande !pause exécutée")
+    logger.info("Commande !pause exécutée")
     if ctx.guild.voice_client and ctx.guild.voice_client.is_playing():
         ctx.guild.voice_client.pause()
         await ctx.send("Musique en pause.")
@@ -277,17 +302,17 @@ async def pause(ctx):
 
 @bot.command(name='stop')
 async def stop(ctx):
-    print("Commande !stop exécutée")
+    logger.info("Commande !stop exécutée")
     if ctx.guild.voice_client:
         ctx.guild.voice_client.stop()
-        await ctx.guild.voice_client.disconnect()
+        await ctx.guild.voice_client.disconnect(force=True)
         await ctx.send("Musique arrêtée et déconnexion.")
     else:
         await ctx.send("Pas connecté à un salon vocal.")
 
 @bot.command(name='skip')
 async def skip(ctx):
-    print("Commande !skip exécutée")
+    logger.info("Commande !skip exécutée")
     if ctx.guild.voice_client and ctx.guild.voice_client.is_playing():
         ctx.guild.voice_client.stop()
         await ctx.send("Musique passée.")
