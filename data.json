@@ -1,0 +1,16 @@
+{
+    "xp": {
+        "1405587681362317343": 132
+    },
+    "levels": {
+        "1405587681362317343": 11
+    },
+    "custom_cmds": {
+        "BITE": "BITE",
+        "bite": "BITE"
+    },
+    "banned_words": [
+        ""
+    ],
+    "url": "https://test.com"
+}
