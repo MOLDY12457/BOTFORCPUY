@@ -1,4 +1,3 @@
-
 import discord
 from discord.ext import commands
 import json
@@ -16,8 +15,11 @@ if not TOKEN:
     print("Erreur : DISCORD_TOKEN non trouvé dans les variables d'environnement")
     exit(1)
 
-# Intents pour tout
-intents = discord.Intents.all()
+# Intents optimisés pour réduire la charge
+intents = discord.Intents.default()
+intents.message_content = True
+intents.members = True
+intents.voice_states = True
 bot = commands.Bot(command_prefix='!', intents=intents)
 
 # Supprime la commande help par défaut
@@ -194,10 +196,10 @@ async def on_command_error(ctx, error):
     else:
         await ctx.send(f"Erreur inattendue : {str(error)}")
 
-# Musique avec cookies pour éviter la détection de bot
+# Musique avec gestion robuste des erreurs
 @bot.command(name='play')
 async def play(ctx, url: str):
-    print("Commande !play exécutée")
+    print(f"Commande !play exécutée avec URL : {url}")
     if not ctx.author.voice:
         await ctx.send("Rejoins un salon vocal d'abord !")
         return
@@ -209,18 +211,23 @@ async def play(ctx, url: str):
         return
 
     if ctx.guild.voice_client:
+        print("Déconnexion du salon vocal existant")
         await ctx.guild.voice_client.disconnect()
 
-    try:
-        voice_client = await channel.connect(timeout=10.0)
-    except asyncio.TimeoutError:
-        await ctx.send("Échec de la connexion au salon vocal : timeout.")
-        return
-    except Exception as e:
-        await ctx.send(f"Erreur de connexion au salon vocal : {str(e)}")
-        return
+    max_attempts = 3
+    for attempt in range(max_attempts):
+        try:
+            print(f"Tentative de connexion vocale {attempt + 1}/{max_attempts}")
+            voice_client = await channel.connect(timeout=15.0, reconnect=True)
+            break
+        except (asyncio.TimeoutError, Exception) as e:
+            print(f"Erreur de connexion vocale (tentative {attempt + 1}): {str(e)}")
+            if attempt == max_attempts - 1:
+                await ctx.send(f"Échec de la connexion au salon vocal après {max_attempts} tentatives : {str(e)}")
+                return
+            await asyncio.sleep(2)  # Délai avant nouvelle tentative
 
-    # Options yt-dlp avec cookies et User-Agent pour éviter la détection de bot
+    # Options yt-dlp avec cookies et gestion d'erreurs
     ydl_opts = {
         'format': 'bestaudio/best',
         'noplaylist': True,
@@ -228,15 +235,16 @@ async def play(ctx, url: str):
         'no_warnings': True,
         'default_search': 'auto',
         'source_address': '0.0.0.0',
-        'cookiefile': 'cookies.txt',  # Chemin vers ton fichier cookies.txt
+        'cookiefile': 'cookies.txt',  # Chemin vers cookies.txt
         'http_headers': {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         },
-        'sleep_interval': 5,  # Délai de 5s entre requêtes pour éviter les rate limits
+        'sleep_interval': 5,
         'max_sleep_interval': 10,
     }
 
     try:
+        print("Extraction de l'URL YouTube...")
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             if 'entries' in info:
@@ -245,14 +253,17 @@ async def play(ctx, url: str):
             title = info.get('title', 'Inconnu')
             await ctx.send(f"Lecture en cours : **{title}**")
             ffmpeg_path = "ffmpeg"  # Render a FFmpeg dans /usr/bin
-            voice_client.play(discord.FFmpegPCMAudio(audio_url, executable=ffmpeg_path))
+            source = discord.FFmpegPCMAudio(audio_url, executable=ffmpeg_path, options='-reconnect 1 -reconnect_streamed 1')
+            voice_client.play(source)
     except Exception as e:
+        print(f"Erreur lors de l'extraction ou lecture YouTube : {str(e)}")
         await ctx.send(f"Erreur lors de la lecture de la vidéo : {str(e)}")
         await voice_client.disconnect()
         return
 
     while voice_client.is_playing():
         await asyncio.sleep(1)
+    print("Lecture terminée, déconnexion du salon vocal")
     await voice_client.disconnect()
 
 @bot.command(name='pause')
